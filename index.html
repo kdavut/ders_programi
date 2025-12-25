@@ -12,7 +12,7 @@
         import { getFirestore, doc, onSnapshot, setDoc, deleteField, updateDoc } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
 
-        // --- SİZİN FİREBASE BİLGİLERİNİZ ---
+        // --- FİREBASE YAPILANDIRMASI ---
         const firebaseConfig = {
             apiKey: "AIzaSyC5ameRbUdibeBPvQHFkFSBK09wF9ULJJg",
             authDomain: "ders-programi-ca5da.firebaseapp.com",
@@ -27,6 +27,7 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
+        // Sabit Veriler
         const sinifGruplari = {
             "9. Sınıflar": ["9-A", "9-B", "9-C", "9-D", "9-E", "9-F", "9-G"],
             "10. Sınıflar": ["10-A", "10-B", "10-C", "10-D", "10-E", "10-F", "10-G"],
@@ -49,18 +50,21 @@
         let selectedCell = null;
         let unsubscribe = null;
         let user = null;
-        
         let userName = localStorage.getItem('user_name') || "";
         let userPin = localStorage.getItem('user_pin') || "";
 
         const startApp = async () => {
-            // Anonim Giriş Yap
             try {
+                // Giriş denemesi
                 await signInAnonymously(auth);
             } catch (err) {
-                console.error("Firebase Auth hatası:", err);
+                console.warn("Firebase Auth kısıtlaması algılandı:", err.code);
+                if (err.code === 'auth/requests-from-referer-blocked') {
+                    showWarning("GÜVENLİK UYARISI: Şu an 'Önizleme' modundasınız. Firebase bu geçici adresi engelliyor. Gerçek kullanım için uygulamayı kendi sitenize yüklemeli ve o adresi Firebase'de 'Authorized Domains' listesine eklemelisiniz.");
+                }
             }
 
+            // Auth değişimi her zaman izlenir
             onAuthStateChanged(auth, (u) => {
                 user = u;
                 if (!userName || !userPin) {
@@ -70,11 +74,24 @@
                     initApp();
                 }
             });
+
+            // Eğer Auth hatası nedeniyle `user` hiç gelmezse, en azından arayüzü kırmamak için anonim bir başlatma yapalım
+            setTimeout(() => {
+                if (!user && userName) {
+                    initApp(); 
+                }
+            }, 2000);
         };
+
+        function showWarning(msg) {
+            const warnDiv = document.getElementById('warning-bar');
+            warnDiv.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-2"></i> ${msg}`;
+            warnDiv.classList.remove('hidden');
+        }
 
         window.completeSetup = () => {
             const nameInput = document.getElementById('setup-name').value.trim();
-            if (nameInput.length < 3) { alert("Lütfen isminizi giriniz."); return; }
+            if (nameInput.length < 3) { alert("Lütfen adınızı soyadınızı giriniz."); return; }
             
             const generatedPin = Math.floor(1000 + Math.random() * 9000).toString();
             userName = nameInput;
@@ -133,9 +150,15 @@
         async function loadSinifData(sinifId) {
             if (unsubscribe) unsubscribe();
             document.getElementById('current-sinif-title').textContent = sinifId + " Sınıfı";
+            
             const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'ders_programlari', sinifId);
+            
             unsubscribe = onSnapshot(docRef, (snap) => {
                 scheduleData = snap.exists() ? snap.data() : {};
+                renderTable();
+            }, (err) => {
+                console.error("Firestore Erişim Sorunu:", err.code);
+                // Kullanıcı giriş yapamadıysa veya yetki yoksa tabloyu boş ama işlevsel göster
                 renderTable();
             });
         }
@@ -146,7 +169,7 @@
             saatler.forEach(saat => {
                 const tr = document.createElement('tr');
                 if (saat.isLunch) {
-                    tr.innerHTML = `<td class="p-2 text-center border-b font-bold text-orange-600 text-[10px] bg-orange-50">MOLA</td><td colspan="5" class="p-2 text-center border-b font-black text-orange-200 text-[10px] bg-orange-50 uppercase">Öğle Arası</td>`;
+                    tr.innerHTML = `<td class="p-2 text-center border-b font-bold text-orange-600 text-[10px] bg-orange-50">MOLA</td><td colspan="5" class="p-2 text-center border-b font-black text-orange-200 text-[10px] bg-orange-50 uppercase tracking-widest italic">Öğle Arası</td>`;
                 } else {
                     tr.className = "border-b border-slate-100";
                     const timeTd = document.createElement('td');
@@ -157,14 +180,14 @@
                     gunler.forEach(gun => {
                         const td = document.createElement('td');
                         const cellData = (scheduleData[gun] && scheduleData[gun][saat.bas]) || null;
-                        td.className = "p-2 border-r cursor-pointer min-w-[120px] h-20 relative bg-white hover:bg-blue-50/30";
+                        td.className = "p-2 border-r cursor-pointer min-w-[120px] h-20 relative bg-white hover:bg-blue-50/30 transition-colors";
                         
                         if(cellData) {
                             const isMyData = cellData.ownerPin === userPin;
                             td.innerHTML = `
                                 <div class="flex flex-col h-full justify-center">
-                                    <div class="flex justify-between items-start">
-                                        <div class="text-[8px] font-black text-blue-600 uppercase truncate">${cellData.t || 'BELİRSİZ'}</div>
+                                    <div class="flex justify-between items-start mb-1">
+                                        <div class="text-[8px] font-black text-blue-600 uppercase truncate pr-1">${cellData.t || 'BELİRSİZ'}</div>
                                         <i class="fa-solid ${isMyData ? 'fa-lock-open text-green-500' : 'fa-lock text-slate-200'} text-[8px]"></i>
                                     </div>
                                     <div class="text-[10px] font-bold text-slate-800 leading-tight">${cellData.d || '-'}</div>
@@ -182,10 +205,14 @@
         }
 
         window.handleCellClick = (gun, saat, existingData) => {
+            if (!user) {
+                alert("Uyarı: Bağlantı kısıtlaması nedeniyle şu an sadece görüntüleme yapabilirsiniz. Lütfen Firebase Authorized Domains ayarını yapın.");
+                return;
+            }
             if (existingData && existingData.ownerPin !== userPin) {
-                const check = prompt("Bu dersi başkası eklemiş. Düzenlemek için bu kişinin PIN kodunu girin:");
+                const check = prompt("Bu dersi başkası eklemiş. PIN kodunu girin:");
                 if (check !== existingData.ownerPin) {
-                    alert("Hatalı PIN! Sadece kendi derslerinizi düzenleyebilirsiniz.");
+                    alert("Hatalı PIN!");
                     return;
                 }
             }
@@ -200,70 +227,91 @@
         window.save = async () => {
             const t = document.getElementById('inp-t').value.trim();
             const d = document.getElementById('inp-d').value.trim();
-            if(!d) return;
+            if(!d || !user) return;
+
             const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'ders_programlari', activeSinif);
-            await setDoc(docRef, { 
-                [selectedCell.gun]: { [selectedCell.saat]: { t, d, ownerPin: userPin, ownerName: userName } }
-            }, { merge: true });
-            document.getElementById('modal').style.display = 'none';
+            try {
+                await setDoc(docRef, { 
+                    [selectedCell.gun]: { [selectedCell.saat]: { t, d, ownerPin: userPin, ownerName: userName } }
+                }, { merge: true });
+                document.getElementById('modal').style.display = 'none';
+            } catch (err) {
+                alert("Kaydetme yetkiniz yok (Firebase kısıtlaması).");
+            }
         };
 
         window.remove = async () => {
+            if(!user) return;
             const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'ders_programlari', activeSinif);
-            await updateDoc(docRef, { [`${selectedCell.gun}.${selectedCell.saat}`]: deleteField() });
-            document.getElementById('modal').style.display = 'none';
+            try {
+                await updateDoc(docRef, { [`${selectedCell.gun}.${selectedCell.saat}`]: deleteField() });
+                document.getElementById('modal').style.display = 'none';
+            } catch (err) {
+                alert("Silme yetkiniz yok.");
+            }
         };
 
         window.onload = startApp;
     </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-        body { font-family: 'Inter', sans-serif; }
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
 </head>
-<body class="bg-slate-100">
+<body class="bg-slate-100 min-h-screen">
 
-    <div id="setup-modal" style="display: none;" class="fixed inset-0 bg-slate-900/90 items-center justify-center z-[100] p-4">
+    <!-- Kritik Uyarı Çubuğu -->
+    <div id="warning-bar" class="hidden bg-amber-500 text-white text-[11px] p-2.5 text-center font-bold sticky top-0 left-0 w-full z-[100] shadow-md"></div>
+
+    <div id="setup-modal" style="display: none;" class="fixed inset-0 bg-slate-900/95 items-center justify-center z-[100] p-4">
         <div class="bg-white w-full max-w-sm rounded-3xl p-8 text-center shadow-2xl">
-            <h2 class="text-xl font-black mb-2">Hoş Geldiniz</h2>
-            <p class="text-sm text-slate-500 mb-6">Program yapabilmek için adınızı giriniz.</p>
+            <h2 class="text-xl font-black mb-2 text-slate-800">Hoş Geldiniz</h2>
+            <p class="text-xs text-slate-500 mb-6 italic">Program yapabilmek için adınızı giriniz.</p>
             <input id="setup-name" type="text" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl mb-4 text-center font-bold" placeholder="Ad Soyad">
-            <button onclick="completeSetup()" class="w-full py-4 bg-blue-600 text-white rounded-xl font-bold uppercase shadow-lg shadow-blue-200">Başla</button>
+            <button onclick="completeSetup()" class="w-full py-4 bg-blue-600 text-white rounded-xl font-bold uppercase shadow-lg">Uygulamaya Başla</button>
         </div>
     </div>
 
     <div id="pin-display-modal" style="display: none;" class="fixed inset-0 bg-blue-600 items-center justify-center z-[110] p-4 text-white text-center">
         <div class="max-w-xs">
-            <h2 class="text-xl font-black mb-2">ERİŞİM KODUNUZ</h2>
-            <p class="text-sm mb-6 opacity-80">Düzenlediğiniz dersleri sadece siz silebilirsiniz. Bu kodu unutmayın!</p>
-            <div id="generated-pin-text" class="text-6xl font-black mb-8 bg-white/20 py-4 rounded-2xl">0000</div>
-            <button onclick="closePinModal()" class="w-full py-4 bg-white text-blue-600 rounded-xl font-black uppercase">Anladım</button>
+            <h2 class="text-xl font-black mb-2 tracking-tight">ERİŞİM KODUNUZ</h2>
+            <p class="text-xs mb-6 opacity-80">Eklediğiniz dersleri sadece siz (veya PIN verdiğiniz biri) değiştirebilir. Bu kodu not edin!</p>
+            <div id="generated-pin-text" class="text-6xl font-black mb-8 bg-white/20 py-4 rounded-3xl tracking-widest shadow-inner">0000</div>
+            <button onclick="closePinModal()" class="w-full py-4 bg-white text-blue-600 rounded-2xl font-black uppercase text-sm">Kaydettim, Başla</button>
         </div>
     </div>
 
-    <header class="bg-white border-b sticky top-0 z-40 p-4 shadow-sm flex justify-between items-center">
+    <header class="bg-white border-b p-4 shadow-sm flex justify-between items-center">
         <div class="flex items-center gap-2">
-            <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black">İS</div>
-            <h1 class="text-xs font-black uppercase text-slate-800">İbni Sina <span class="text-blue-600">MTAL</span></h1>
+            <div class="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black italic shadow-md shadow-blue-100">İS</div>
+            <div class="leading-none">
+                <h1 class="text-[10px] font-black uppercase text-slate-800">İbni Sina <span class="text-blue-600">MTAL</span></h1>
+                <p class="text-[8px] font-bold text-slate-400 mt-0.5">DERS PROGRAMI SİSTEMİ</p>
+            </div>
         </div>
-        <div id="display-name" class="text-[10px] font-black text-slate-400 uppercase bg-slate-100 px-3 py-1.5 rounded-full">--</div>
+        <div id="display-name" class="text-[9px] font-black text-slate-500 uppercase bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200">--</div>
     </header>
 
     <div id="sinif-menu-container" class="max-w-7xl mx-auto p-4 space-y-1.5"></div>
 
-    <main class="max-w-7xl mx-auto p-4">
-        <h2 id="current-sinif-title" class="text-3xl font-black text-slate-900 mb-4 tracking-tighter">--</h2>
-        <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-            <div class="overflow-x-auto">
+    <main class="max-w-7xl mx-auto p-4 pt-0">
+        <div class="flex items-center gap-3 mb-4 mt-2">
+            <div class="w-1.5 h-8 bg-blue-600 rounded-full"></div>
+            <h2 id="current-sinif-title" class="text-3xl font-black text-slate-900 tracking-tighter uppercase">--</h2>
+        </div>
+        
+        <div class="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+            <div class="overflow-x-auto no-scrollbar">
                 <table class="w-full">
-                    <thead class="bg-slate-50 border-b">
+                    <thead class="bg-slate-50/50 border-b">
                         <tr>
-                            <th class="p-3 text-[9px] font-black text-slate-400 uppercase w-16">Saat</th>
-                            <th class="p-3 text-[9px] font-black text-slate-400 uppercase">Pzt</th>
-                            <th class="p-3 text-[9px] font-black text-slate-400 uppercase">Sal</th>
-                            <th class="p-3 text-[9px] font-black text-slate-400 uppercase">Çar</th>
-                            <th class="p-3 text-[9px] font-black text-slate-400 uppercase">Per</th>
-                            <th class="p-3 text-[9px] font-black text-slate-400 uppercase text-center">Cum</th>
+                            <th class="p-3 text-[9px] font-black text-slate-400 uppercase w-16 text-center">Saat</th>
+                            <th class="p-3 text-[9px] font-black text-slate-500 uppercase">Pzt</th>
+                            <th class="p-3 text-[9px] font-black text-slate-500 uppercase">Sal</th>
+                            <th class="p-3 text-[9px] font-black text-slate-500 uppercase">Çar</th>
+                            <th class="p-3 text-[9px] font-black text-slate-500 uppercase">Per</th>
+                            <th class="p-3 text-[9px] font-black text-slate-500 uppercase">Cum</th>
                         </tr>
                     </thead>
                     <tbody id="schedule-body"></tbody>
@@ -272,16 +320,27 @@
         </div>
     </main>
 
-    <div id="modal" style="display: none;" class="fixed inset-0 bg-slate-900/60 items-center justify-center z-50 p-4">
-        <div class="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl">
-            <h3 class="text-lg font-black mb-1">Ders Bilgisi</h3>
-            <p id="m-info" class="text-[9px] text-blue-600 font-bold mb-4 uppercase"></p>
+    <div id="modal" style="display: none;" class="fixed inset-0 bg-slate-900/70 backdrop-blur-md items-center justify-center z-50 p-4">
+        <div class="bg-white w-full max-w-sm rounded-[2rem] p-7 shadow-2xl">
+            <div class="flex items-center gap-2 mb-4">
+                <div class="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center"><i class="fa-solid fa-calendar-plus"></i></div>
+                <h3 class="text-lg font-black text-slate-800">Ders Bilgisi</h3>
+            </div>
+            <p id="m-info" class="text-[9px] text-blue-600 font-black mb-5 p-2 bg-blue-50 rounded-lg uppercase inline-block"></p>
             <div class="space-y-3">
-                <input id="inp-t" class="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold" placeholder="Öğretmen">
-                <input id="inp-d" class="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold" placeholder="Ders Adı">
-                <button onclick="save()" class="w-full py-4 bg-blue-600 text-white rounded-xl font-bold uppercase text-sm">Kaydet</button>
-                <button id="btn-del" onclick="remove()" class="w-full py-3 text-red-500 font-bold text-xs uppercase">Dersi Sil</button>
-                <button onclick="document.getElementById('modal').style.display='none'" class="w-full py-2 text-slate-400 font-bold text-xs uppercase">Kapat</button>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-black text-slate-400 uppercase ml-1">Öğretmen</label>
+                    <input id="inp-t" class="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none" placeholder="Ad Soyad">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-black text-slate-400 uppercase ml-1">Ders Adı</label>
+                    <input id="inp-d" class="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none" placeholder="Örn: Matematik">
+                </div>
+                <button onclick="save()" class="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-sm shadow-lg shadow-blue-200 mt-2">Kaydet</button>
+                <div class="flex gap-2">
+                    <button id="btn-del" onclick="remove()" class="flex-1 py-3 bg-red-50 text-red-600 rounded-xl font-bold text-[10px] uppercase">Sil</button>
+                    <button onclick="document.getElementById('modal').style.display='none'" class="flex-1 py-3 text-slate-400 font-bold text-[10px] uppercase">Vazgeç</button>
+                </div>
             </div>
         </div>
     </div>
