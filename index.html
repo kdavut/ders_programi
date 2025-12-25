@@ -12,17 +12,17 @@
         import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
 
-        // SİZİN FİREBASE BİLGİLERİNİZ
+        // --- GÜNCEL FİREBASE YAPILANDIRMASI (Yeni Proje) ---
         const firebaseConfig = {
-            apiKey: "AIzaSyDtEwuanPce0yE10JvP567QnesgGD4dPfw",
-            authDomain: "dkunix.firebaseapp.com",
-            projectId: "dkunix",
-            storageBucket: "dkunix.firebasestorage.app",
-            messagingSenderId: "841856763234",
-            appId: "1:841856763234:web:845861d735c7f5ec99183b"
+            apiKey: "AIzaSyC2Gb5C2pgQ0xK7llm_kJcwNtPv57xm3ow",
+            authDomain: "ders-programi-ca5da.firebaseapp.com",
+            projectId: "ders-programi-ca5da",
+            storageBucket: "ders-programi-ca5da.firebasestorage.app",
+            messagingSenderId: "479785972572",
+            appId: "1:479785972572:web:aa9e0257d9c93b4d360799"
         };
 
-        const appId = "ibni-sina-ders-prog"; // Sabit bir ID
+        const appId = "ibni-sina-ders-prog"; 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
@@ -57,7 +57,9 @@
         onAuthStateChanged(auth, (u) => {
             user = u;
             if (!user) {
-                signInAnonymously(auth);
+                signInAnonymously(auth).catch(err => {
+                    console.error("Firebase Auth hatası: Anonim giriş aktif olmayabilir.", err);
+                });
             } else {
                 if (!userName || !userPin) {
                     document.getElementById('setup-modal').style.display = 'flex';
@@ -124,6 +126,8 @@
             unsubscribe = onSnapshot(docRef, (snap) => {
                 scheduleData = snap.exists() ? snap.data() : {};
                 renderTable();
+            }, (err) => {
+                console.error("Veri okuma hatası: Firestore kuralları geçersiz olabilir.", err);
             });
         }
 
@@ -134,7 +138,7 @@
                 const tr = document.createElement('tr');
                 if (saat.isLunch) {
                     tr.className = "bg-orange-50/40";
-                    tr.innerHTML = `<td class="p-3 text-center border-b border-orange-100 font-bold text-orange-600 text-[10px]">MOLA</td><td colspan="5" class="p-3 text-center border-b border-orange-100 font-black text-orange-300 uppercase">Öğle Arası</td>`;
+                    tr.innerHTML = `<td class="p-3 text-center border-b border-orange-100 font-bold text-orange-600 text-[10px]">MOLA</td><td colspan="5" class="p-3 text-center border-b border-orange-100 font-black text-orange-300 uppercase text-xs">Öğle Arası</td>`;
                 } else {
                     tr.className = "border-b border-slate-100 hover:bg-slate-50/50";
                     const timeTd = document.createElement('td');
@@ -185,14 +189,21 @@
             const t = document.getElementById('inp-t').value.trim();
             const d = document.getElementById('inp-d').value.trim();
             const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'ders_programlari', activeSinif);
-            await setDoc(docRef, { [selectedCell.gun]: { [selectedCell.saat]: { t, d, ownerPin: userPin, ownerName: userName } } }, { merge: true });
-            document.getElementById('modal').style.display = 'none';
+            try {
+                await setDoc(docRef, { [selectedCell.gun]: { [selectedCell.saat]: { t, d, ownerPin: userPin, ownerName: userName } } }, { merge: true });
+                document.getElementById('modal').style.display = 'none';
+            } catch (err) {
+                alert("Kaydetme hatası! Firebase kurallarını (Rules) ve Anonim Giriş (Anonymous Auth) ayarını yeni projenizde aktif ettiğinizden emin olun.");
+                console.error(err);
+            }
         };
 
     </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .scale-in { animation: scaleIn 0.2s ease-out; }
+        @keyframes scaleIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
     </style>
 </head>
 <body class="bg-[#fcfdfe] min-h-screen">
@@ -200,52 +211,96 @@
     <div id="setup-modal" style="display: none;" class="fixed inset-0 bg-slate-900/95 backdrop-blur-xl items-center justify-center z-[100] p-4">
         <div class="bg-white w-full max-w-md rounded-[3rem] p-10 text-center">
             <h2 class="text-2xl font-black mb-4">Sistem Kurulumu</h2>
-            <input id="setup-name" type="text" class="w-full p-5 bg-slate-50 border-2 rounded-2xl text-center mb-4 font-bold" placeholder="Adınız Soyadınız">
-            <button onclick="completeSetup()" class="w-full py-5 bg-blue-700 text-white rounded-2xl font-black">BAŞLA</button>
+            <p class="text-slate-500 text-sm mb-6 text-balance">Öğretmen adınızı girerek size özel bir erişim kodu (PIN) oluşturun.</p>
+            <input id="setup-name" type="text" class="w-full p-5 bg-slate-50 border-2 rounded-2xl text-center mb-4 font-bold outline-none focus:border-blue-500" placeholder="Adınız Soyadınız">
+            <button onclick="completeSetup()" class="w-full py-5 bg-blue-700 text-white rounded-2xl font-black hover:bg-blue-800 transition-colors">SİSTEME GİRİŞ YAP</button>
         </div>
     </div>
 
     <div id="pin-display-modal" style="display: none;" class="fixed inset-0 bg-blue-700 items-center justify-center z-[110] p-4 text-white">
         <div class="text-center max-w-md">
             <h2 class="text-3xl font-black mb-4">Erişim Kodunuz!</h2>
-            <div id="generated-pin-text" class="text-7xl font-black tracking-widest mb-8">0000</div>
-            <button onclick="closePinModal()" class="w-full py-6 bg-white text-blue-700 rounded-3xl font-black">KAYDETTİM VE ANLADIM</button>
+            <p class="opacity-80 mb-6">Bu kodla diğer cihazlardan derslerinizi düzenleyebilirsiniz. Lütfen bir yere not edin.</p>
+            <div id="generated-pin-text" class="text-7xl font-black tracking-widest mb-8 bg-white/10 py-6 rounded-3xl">0000</div>
+            <button onclick="closePinModal()" class="w-full py-6 bg-white text-blue-700 rounded-3xl font-black shadow-2xl">KAYDETTİM VE ANLADIM</button>
         </div>
     </div>
 
-    <div class="bg-white border-b sticky top-0 z-40 p-4">
+    <div class="bg-white border-b sticky top-0 z-40 p-4 shadow-sm">
         <div class="max-w-7xl mx-auto flex justify-between items-center mb-4">
-            <h1 class="text-xl font-black uppercase tracking-tighter">İbni Sina MTAL</h1>
-            <span id="display-name" class="text-xs font-black bg-slate-100 px-4 py-2 rounded-full">--</span>
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-blue-700 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-200">
+                    <i class="fa-solid fa-school"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-black uppercase tracking-tighter text-slate-800 leading-none">İbni Sina MTAL</h1>
+                    <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Ders Programı Hazırlama</span>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <span id="display-name" class="text-xs font-black bg-slate-100 text-slate-600 px-4 py-2 rounded-full border border-slate-200">--</span>
+            </div>
         </div>
         <div id="sinif-menu-container" class="max-w-7xl mx-auto space-y-2"></div>
     </div>
 
     <div class="max-w-7xl mx-auto p-4 md:p-8">
-        <h2 id="current-sinif-title" class="text-4xl font-black mb-6">--</h2>
-        <div class="bg-white rounded-[2rem] border overflow-hidden shadow-xl">
+        <div class="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
+            <div>
+                <p class="text-blue-600 font-bold text-sm mb-1 uppercase tracking-widest">Haftalık Çizelge</p>
+                <h2 id="current-sinif-title" class="text-4xl md:text-5xl font-black text-slate-900 tracking-tight">--</h2>
+            </div>
+            <div class="flex gap-4 text-[10px] font-bold text-slate-400">
+                <div class="flex items-center gap-1"><i class="fa-solid fa-lock text-slate-300"></i> Dolu Hücre</div>
+                <div class="flex items-center gap-1"><i class="fa-solid fa-lock-open text-green-500"></i> Düzenlenebilir</div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-2xl shadow-slate-200/50">
             <div class="overflow-x-auto">
-                <table class="w-full text-center">
-                    <thead class="bg-slate-900 text-white text-[10px] uppercase font-black">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-slate-900 text-white text-[10px] uppercase font-black tracking-widest">
                         <tr>
-                            <th class="p-4">Saat</th><th>Pazartesi</th><th>Salı</th><th>Çarşamba</th><th>Perşembe</th><th>Cuma</th>
+                            <th class="p-5 text-center border-r border-slate-800 w-24">Saat</th>
+                            <th class="p-5">Pazartesi</th>
+                            <th class="p-5">Salı</th>
+                            <th class="p-5">Çarşamba</th>
+                            <th class="p-5">Perşembe</th>
+                            <th class="p-5">Cuma</th>
                         </tr>
                     </thead>
                     <tbody id="schedule-body"></tbody>
                 </table>
             </div>
         </div>
+        
+        <p class="mt-8 text-center text-slate-400 text-xs font-medium">
+            &copy; 2024 İbni Sina Mesleki ve Teknik Anadolu Lisesi | Müd. Yrd. Dijital Yönetim Sistemi
+        </p>
     </div>
 
-    <div id="modal" style="display: none;" class="fixed inset-0 bg-slate-900/60 backdrop-blur items-center justify-center z-50 p-4">
-        <div class="bg-white w-full max-w-sm rounded-[2.5rem] p-8">
-            <h3 class="font-black mb-1">Dersi Düzenle</h3>
-            <p id="m-info" class="text-[10px] text-blue-600 font-bold mb-4"></p>
-            <input id="inp-t" class="w-full p-4 bg-slate-50 rounded-xl mb-3 font-bold" placeholder="Öğretmen Adı">
-            <input id="inp-d" class="w-full p-4 bg-slate-50 rounded-xl mb-6 font-bold" placeholder="Ders Adı">
-            <div class="flex gap-2">
-                <button onclick="document.getElementById('modal').style.display='none'" class="flex-1 py-4 font-bold text-slate-400">Kapat</button>
-                <button onclick="save()" class="flex-1 py-4 bg-blue-700 text-white rounded-xl font-bold">Kaydet</button>
+    <div id="modal" style="display: none;" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm items-center justify-center z-50 p-4">
+        <div class="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl scale-in">
+            <div class="w-12 h-12 bg-blue-50 text-blue-700 rounded-2xl flex items-center justify-center mb-6 text-xl">
+                <i class="fa-solid fa-pen-nib"></i>
+            </div>
+            <h3 class="text-xl font-black text-slate-900 mb-1">Dersi Düzenle</h3>
+            <p id="m-info" class="text-[10px] text-blue-600 font-bold mb-6 uppercase tracking-wider"></p>
+            
+            <div class="space-y-4 mb-8">
+                <div>
+                    <label class="text-[10px] font-black text-slate-400 uppercase ml-1">Öğretmen / Branş</label>
+                    <input id="inp-t" class="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl outline-none font-bold transition-all" placeholder="Örn: Ahmet Yılmaz (Mat)">
+                </div>
+                <div>
+                    <label class="text-[10px] font-black text-slate-400 uppercase ml-1">Ders Adı / Konu</label>
+                    <input id="inp-d" class="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl outline-none font-bold transition-all" placeholder="Örn: Matematik">
+                </div>
+            </div>
+
+            <div class="flex gap-3">
+                <button onclick="document.getElementById('modal').style.display='none'" class="flex-1 py-4 font-bold text-slate-400 hover:text-slate-600 transition-colors">İptal</button>
+                <button onclick="save()" class="flex-1 py-4 bg-blue-700 text-white rounded-2xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-800 transition-all">Kaydet</button>
             </div>
         </div>
     </div>
