@@ -10,11 +10,11 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
         import { getFirestore, doc, onSnapshot, setDoc, deleteField, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
 
-        // --- FİREBASE YAPILANDIRMASI ---
+        // Firebase Config (Burayı kendi bilgilerinizle doldurmayı unutmayın)
         const firebaseConfig = {
-            apiKey: "AIzaSyC2Gb5C2pgQ0xK7llm_kJcwNtPv57xm3ow",
+            apiKey: "AIzaSyAs7...", 
             authDomain: "ders-programi-ca5da.firebaseapp.com",
             projectId: "ders-programi-ca5da",
             storageBucket: "ders-programi-ca5da.firebasestorage.app",
@@ -57,17 +57,7 @@
         let isAdmin = localStorage.getItem('is_admin') === "true";
 
         const initAuth = async () => {
-            try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token && __initial_auth_token !== "") {
-                    await signInWithCustomToken(auth, __initial_auth_token).catch(async (err) => {
-                        await signInAnonymously(auth);
-                    });
-                } else {
-                    await signInAnonymously(auth);
-                }
-            } catch (err) {
-                console.error("Auth error:", err);
-            }
+            try { await signInAnonymously(auth); } catch (err) { console.error(err); }
         };
 
         initAuth();
@@ -124,7 +114,6 @@
                 ? `<i class="fa-solid fa-crown mr-2 text-amber-500"></i>${userName}` 
                 : `${userName} (Kod: ${userPin})`;
             
-            // Admin paneli görünürlüğü
             document.getElementById('admin-actions').style.display = isAdmin ? 'flex' : 'none';
         }
 
@@ -162,7 +151,7 @@
             unsubscribe = onSnapshot(docRef, (snap) => {
                 scheduleData = snap.exists() ? snap.data() : {};
                 renderTable();
-            }, (err) => console.error("Snapshot hatası:", err));
+            });
         }
 
         function renderTable() {
@@ -213,14 +202,12 @@
             document.getElementById('inp-d').value = existingData ? existingData.d : "";
             const deleteBtn = document.getElementById('btn-delete');
             deleteBtn.style.display = existingData ? 'flex' : 'none';
-            document.getElementById('admin-notice').style.display = isAdmin ? 'block' : 'none';
             document.getElementById('modal').style.display = 'flex';
         };
 
         window.save = async () => {
-            if (!user) return;
             const d = document.getElementById('inp-d').value.trim();
-            if(!d) return;
+            if(!d || !user) return;
             const { existingData } = selectedCell;
             if (!isAdmin && existingData && existingData.ownerPin && existingData.ownerPin !== userPin) {
                 const checkPin = prompt("Başkasının verisini değiştirmek için sahibinin PIN kodunu girin:");
@@ -242,9 +229,8 @@
         };
 
         window.removeDers = async () => {
-            if (!user) return;
             const { existingData, gun, saat } = selectedCell;
-            if(!existingData) return;
+            if(!existingData || !user) return;
             if (!isAdmin && existingData.ownerPin !== userPin) {
                 const checkPin = prompt("Sahibinin PIN kodunu girin:");
                 if (checkPin !== existingData.ownerPin) return;
@@ -258,36 +244,22 @@
             } catch (err) { console.error(err); }
         };
 
-        // --- YENİ: TÜM VERİLERİ SIFIRLAMA ---
         window.resetAllData = async () => {
             if (!isAdmin) return;
-            
-            const firstConfirm = confirm("DİKKAT! Tüm sınıfların ders programları KALICI OLARAK silinecek. Emin misiniz?");
-            if (!firstConfirm) return;
-
-            const secondConfirm = prompt("İşlemi onaylamak için 'SİL' yazın:");
-            if (secondConfirm !== "SİL") {
-                alert("İşlem iptal edildi.");
-                return;
-            }
-
+            if (!confirm("Tüm sınıflar silinecek. Emin misiniz?")) return;
+            if (prompt("Onay için SİL yazın:") !== "SİL") return;
             try {
-                // Tüm sınıfları döngüye alarak dokümanları sil
                 for (const grup in sinifGruplari) {
                     for (const sinif of sinifGruplari[grup]) {
-                        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'ders_programlari', sinif);
-                        await deleteDoc(docRef);
+                        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'ders_programlari', sinif));
                     }
                 }
-                alert("Tüm veriler başarıyla sıfırlandı.");
                 location.reload();
-            } catch (err) {
-                alert("Hata oluştu: " + err.message);
-            }
+            } catch (err) { alert(err.message); }
         };
 
-        window.resetUser = () => {
-            if(confirm("Oturum kapatılsın mı?")) {
+        window.logout = () => {
+            if(confirm("Bu cihazdaki oturumunuzu kapatmak istiyor musunuz? (Yeni bir arkadaşınız giriş yapabilir)")) {
                 localStorage.clear();
                 location.reload();
             }
@@ -310,8 +282,8 @@
                 <i class="fa-solid fa-user-tie"></i>
             </div>
             <h2 class="text-2xl font-black mb-2 text-slate-800">Hoş Geldiniz</h2>
-            <p class="text-slate-500 text-sm mb-8 text-balance">Adınızı Soyadınızı yazarak başlayın.</p>
-            <input id="setup-name" type="text" class="w-full p-5 bg-slate-50 border-2 rounded-2xl text-center mb-4 font-bold outline-none focus:border-blue-500 transition-all" placeholder="Ad Soyad veya Admin Kodu">
+            <p class="text-slate-500 text-sm mb-8">Lütfen adınızı soyadınızı giriniz.</p>
+            <input id="setup-name" type="text" class="w-full p-5 bg-slate-50 border-2 rounded-2xl text-center mb-4 font-bold outline-none focus:border-blue-500" placeholder="Ad Soyad">
             <button onclick="completeSetup()" class="w-full py-5 bg-blue-700 text-white rounded-2xl font-black hover:bg-blue-800 transition-all shadow-xl shadow-blue-200 uppercase tracking-widest text-sm">Giriş Yap</button>
         </div>
     </div>
@@ -323,58 +295,53 @@
                 <i class="fa-solid fa-key text-3xl"></i>
             </div>
             <h2 class="text-3xl font-black mb-4 tracking-tight">Erişim Kodunuz</h2>
-            <p class="opacity-80 mb-8 text-balance">Kendi hücrelerinizi silmek için bu kodu kullanacaksınız.</p>
+            <p class="opacity-80 mb-8">Kendi derslerinizi düzenlemek için bu kodu kullanacaksınız. Lütfen not edin!</p>
             <div id="generated-pin-text" class="text-7xl font-black tracking-widest mb-10 bg-white/10 py-8 rounded-[2.5rem] border border-white/20">0000</div>
             <button onclick="closePinModal()" class="w-full py-6 bg-white text-blue-700 rounded-3xl font-black shadow-2xl hover:bg-slate-50 transition-colors uppercase tracking-widest">SİSTEME GİR</button>
         </div>
     </div>
 
-    <!-- Header -->
+    <!-- Üst Başlık -->
     <header class="bg-white/80 backdrop-blur-md border-b sticky top-0 z-40 p-4 shadow-sm">
         <div class="max-w-7xl mx-auto flex justify-between items-center mb-4">
             <div class="flex items-center gap-3">
-                <div class="w-10 h-10 bg-blue-700 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-200 cursor-pointer" onclick="resetUser()">
+                <div class="w-10 h-10 bg-blue-700 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-200">
                     <i class="fa-solid fa-school"></i>
                 </div>
                 <div>
                     <h1 class="text-lg font-black uppercase tracking-tighter text-slate-800 leading-none">İbni Sina MTAL</h1>
-                    <span class="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Ders Programı Hazırlama Sistemi</span>
+                    <span class="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Ders Programı Sistemi</span>
                 </div>
             </div>
-            <div class="flex items-center gap-4">
-                <div id="admin-actions" style="display: none;" class="flex gap-2">
-                    <button onclick="resetAllData()" class="px-4 py-2 bg-red-50 text-red-600 text-[10px] font-black rounded-xl border border-red-100 hover:bg-red-100 transition-all uppercase tracking-tighter">
-                        <i class="fa-solid fa-trash-arrow-up mr-1"></i> Tümünü Sıfırla
-                    </button>
+            <div class="flex items-center gap-2">
+                <div id="admin-actions" style="display: none;" class="mr-2">
+                    <button onclick="resetAllData()" class="px-3 py-1.5 bg-red-50 text-red-600 text-[10px] font-black rounded-lg border border-red-100 uppercase">Sıfırla</button>
                 </div>
-                <div id="user-tag" class="flex items-center gap-2">
-                    <span id="display-name" class="text-[10px] font-black text-blue-700 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 flex items-center">--</span>
+                <div class="flex items-center bg-blue-50 rounded-xl p-1 pr-3 border border-blue-100">
+                    <span id="display-name" class="text-[10px] font-black text-blue-700 px-3 py-1.5">--</span>
+                    <button onclick="logout()" class="w-8 h-8 bg-white text-red-500 rounded-lg flex items-center justify-center shadow-sm border border-slate-200 hover:bg-red-50 hover:text-red-600 transition-all" title="Oturumu Kapat">
+                        <i class="fa-solid fa-right-from-bracket text-xs"></i>
+                    </button>
                 </div>
             </div>
         </div>
         <div id="sinif-menu-container" class="max-w-7xl mx-auto space-y-2"></div>
     </header>
 
-    <!-- Main Content -->
+    <!-- Ana Tablo Alanı -->
     <main class="max-w-7xl mx-auto p-4 md:p-8">
         <div class="flex flex-col md:flex-row md:items-end justify-between mb-10 gap-4">
             <div>
-                <nav class="text-blue-600 font-bold text-[10px] mb-2 uppercase tracking-widest flex items-center gap-2">
-                    <span>Yönetim Paneli</span> <i class="fa-solid fa-chevron-right text-[8px] opacity-50"></i> <span>Ders Çizelgesi</span>
-                </nav>
+                <nav class="text-blue-600 font-bold text-[10px] mb-2 uppercase tracking-widest">Yönetim Paneli > Ders Çizelgesi</nav>
                 <h2 id="current-sinif-title" class="text-4xl md:text-6xl font-black text-slate-900 tracking-tighter">--</h2>
             </div>
-            <div class="flex flex-wrap gap-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                <div class="flex items-center gap-2 bg-slate-100 px-3 py-2 rounded-xl">
-                    <i class="fa-solid fa-lock text-slate-300"></i> Başkasının
-                </div>
-                <div class="flex items-center gap-2 bg-green-50 text-green-600 px-3 py-2 rounded-xl border border-green-100">
-                    <i class="fa-solid fa-lock-open"></i> Düzenlenebilir
-                </div>
+            <div class="flex gap-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                <div class="flex items-center gap-2 bg-slate-100 px-3 py-2 rounded-xl"><i class="fa-solid fa-lock opacity-30"></i> Başkasının</div>
+                <div class="flex items-center gap-2 bg-green-50 text-green-600 px-3 py-2 rounded-xl border border-green-100"><i class="fa-solid fa-lock-open"></i> Sizin</div>
             </div>
         </div>
 
-        <div class="bg-white rounded-[3rem] border border-slate-200 overflow-hidden shadow-2xl shadow-slate-200/40">
+        <div class="bg-white rounded-[3rem] border border-slate-200 overflow-hidden shadow-2xl">
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse table-fixed min-w-[900px]">
                     <thead class="bg-slate-900 text-white text-[10px] uppercase font-black tracking-widest">
@@ -387,31 +354,27 @@
                             <th class="p-6">Cuma</th>
                         </tr>
                     </thead>
-                    <tbody id="schedule-body" class="text-slate-700"></tbody>
+                    <tbody id="schedule-body"></tbody>
                 </table>
             </div>
         </div>
     </main>
 
-    <!-- Editor Modal -->
+    <!-- Düzenleme Modalı -->
     <div id="modal" style="display: none;" class="fixed inset-0 bg-slate-900/60 backdrop-blur-md items-center justify-center z-50 p-4">
-        <div class="bg-white w-full max-w-sm rounded-[3rem] p-10 shadow-2xl scale-in relative overflow-hidden">
-            <div class="absolute top-0 left-0 w-full h-2 bg-blue-700"></div>
-            <div class="w-14 h-14 bg-blue-50 text-blue-700 rounded-2xl flex items-center justify-center mb-6 text-2xl"><i class="fa-solid fa-pen-nib"></i></div>
-            <h3 class="text-2xl font-black text-slate-900 mb-1 tracking-tight">Hücreyi Düzenle</h3>
-            <p id="m-info" class="text-[10px] text-blue-600 font-bold mb-8 uppercase tracking-widest bg-blue-50 inline-block px-2 py-1 rounded"></p>
-            <div class="space-y-5 mb-10">
-                <input id="inp-d" class="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl outline-none font-bold transition-all text-slate-800" placeholder="Örn: Matematik">
-            </div>
+        <div class="bg-white w-full max-w-sm rounded-[3rem] p-10 shadow-2xl scale-in">
+            <h3 class="text-2xl font-black text-slate-900 mb-1">Dersi Düzenle</h3>
+            <p id="m-info" class="text-[10px] text-blue-600 font-bold mb-8 uppercase bg-blue-50 inline-block px-2 py-1 rounded"></p>
+            <input id="inp-d" class="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none font-bold mb-8" placeholder="Örn: 9-A Matematik">
             <div class="flex flex-col gap-3">
-                <button onclick="save()" class="w-full py-5 bg-blue-700 text-white rounded-2xl font-black shadow-lg shadow-blue-200 hover:bg-blue-800 transition-all uppercase tracking-widest text-xs">Kaydet</button>
+                <button onclick="save()" class="w-full py-5 bg-blue-700 text-white rounded-2xl font-black uppercase text-xs">Kaydet</button>
                 <div class="flex gap-2">
-                    <button id="btn-delete" onclick="removeDers()" class="flex-1 py-4 bg-red-50 text-red-600 rounded-2xl font-black hover:bg-red-100 transition-all uppercase tracking-widest text-[10px] items-center justify-center">Hücreyi Sil</button>
-                    <button onclick="document.getElementById('modal').style.display='none'" class="flex-1 py-4 font-black text-slate-400 text-[10px]">İptal</button>
+                    <button id="btn-delete" onclick="removeDers()" class="flex-1 py-4 bg-red-50 text-red-600 rounded-2xl font-black text-[10px] uppercase">Sil</button>
+                    <button onclick="document.getElementById('modal').style.display='none'" class="flex-1 py-4 font-black text-slate-400 text-[10px] uppercase">İptal</button>
                 </div>
             </div>
-            <div id="admin-notice" class="mt-4 text-center hidden"><span class="text-[9px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100 uppercase tracking-widest">YÖNETİCİ YETKİSİ AKTİF</span></div>
         </div>
     </div>
+
 </body>
 </html>
