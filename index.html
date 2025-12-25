@@ -10,7 +10,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
         import { getFirestore, doc, onSnapshot, setDoc, deleteField, updateDoc } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
 
         // --- FİREBASE YAPILANDIRMASI ---
         const firebaseConfig = {
@@ -55,16 +55,11 @@
 
         const startApp = async () => {
             try {
-                // Giriş denemesi
                 await signInAnonymously(auth);
             } catch (err) {
                 console.warn("Firebase Auth kısıtlaması algılandı:", err.code);
-                if (err.code === 'auth/requests-from-referer-blocked') {
-                    showWarning("GÜVENLİK UYARISI: Şu an 'Önizleme' modundasınız. Firebase bu geçici adresi engelliyor. Gerçek kullanım için uygulamayı kendi sitenize yüklemeli ve o adresi Firebase'de 'Authorized Domains' listesine eklemelisiniz.");
-                }
             }
 
-            // Auth değişimi her zaman izlenir
             onAuthStateChanged(auth, (u) => {
                 user = u;
                 if (!userName || !userPin) {
@@ -75,7 +70,6 @@
                 }
             });
 
-            // Eğer Auth hatası nedeniyle `user` hiç gelmezse, en azından arayüzü kırmamak için anonim bir başlatma yapalım
             setTimeout(() => {
                 if (!user && userName) {
                     initApp(); 
@@ -111,8 +105,23 @@
             initApp();
         };
 
+        // --- ÇIKIŞ YAP FONKSİYONU ---
+        window.logout = async () => {
+            if (confirm("Çıkış yapmak istediğinize emin misiniz? Kayıtlı isminiz ve PIN kodunuz bu tarayıcıdan silinecektir.")) {
+                localStorage.removeItem('user_name');
+                localStorage.removeItem('user_pin');
+                try {
+                    await signOut(auth);
+                } catch (e) {
+                    console.log("Oturum zaten kapalı veya hata oluştu.");
+                }
+                window.location.reload(); 
+            }
+        };
+
         function updateUserDisplay() {
             document.getElementById('display-name').textContent = userName;
+            document.getElementById('user-info-section').classList.remove('hidden');
         }
 
         function initApp() {
@@ -150,15 +159,11 @@
         async function loadSinifData(sinifId) {
             if (unsubscribe) unsubscribe();
             document.getElementById('current-sinif-title').textContent = sinifId + " Sınıfı";
-            
             const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'ders_programlari', sinifId);
-            
             unsubscribe = onSnapshot(docRef, (snap) => {
                 scheduleData = snap.exists() ? snap.data() : {};
                 renderTable();
             }, (err) => {
-                console.error("Firestore Erişim Sorunu:", err.code);
-                // Kullanıcı giriş yapamadıysa veya yetki yoksa tabloyu boş ama işlevsel göster
                 renderTable();
             });
         }
@@ -206,11 +211,11 @@
 
         window.handleCellClick = (gun, saat, existingData) => {
             if (!user) {
-                alert("Uyarı: Bağlantı kısıtlaması nedeniyle şu an sadece görüntüleme yapabilirsiniz. Lütfen Firebase Authorized Domains ayarını yapın.");
+                alert("Bağlantı kısıtlı. Sadece izleme modundasınız.");
                 return;
             }
             if (existingData && existingData.ownerPin !== userPin) {
-                const check = prompt("Bu dersi başkası eklemiş. PIN kodunu girin:");
+                const check = prompt("Bu dersi başkası eklemiş. Düzenlemek için dersi ekleyenin PIN kodunu girin:");
                 if (check !== existingData.ownerPin) {
                     alert("Hatalı PIN!");
                     return;
@@ -228,7 +233,6 @@
             const t = document.getElementById('inp-t').value.trim();
             const d = document.getElementById('inp-d').value.trim();
             if(!d || !user) return;
-
             const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'ders_programlari', activeSinif);
             try {
                 await setDoc(docRef, { 
@@ -236,7 +240,7 @@
                 }, { merge: true });
                 document.getElementById('modal').style.display = 'none';
             } catch (err) {
-                alert("Kaydetme yetkiniz yok (Firebase kısıtlaması).");
+                alert("Kaydetme hatası.");
             }
         };
 
@@ -247,7 +251,7 @@
                 await updateDoc(docRef, { [`${selectedCell.gun}.${selectedCell.saat}`]: deleteField() });
                 document.getElementById('modal').style.display = 'none';
             } catch (err) {
-                alert("Silme yetkiniz yok.");
+                alert("Silme hatası.");
             }
         };
 
@@ -261,9 +265,9 @@
 </head>
 <body class="bg-slate-100 min-h-screen">
 
-    <!-- Kritik Uyarı Çubuğu -->
     <div id="warning-bar" class="hidden bg-amber-500 text-white text-[11px] p-2.5 text-center font-bold sticky top-0 left-0 w-full z-[100] shadow-md"></div>
 
+    <!-- Başlangıç Modal -->
     <div id="setup-modal" style="display: none;" class="fixed inset-0 bg-slate-900/95 items-center justify-center z-[100] p-4">
         <div class="bg-white w-full max-w-sm rounded-3xl p-8 text-center shadow-2xl">
             <h2 class="text-xl font-black mb-2 text-slate-800">Hoş Geldiniz</h2>
@@ -273,24 +277,35 @@
         </div>
     </div>
 
+    <!-- PIN Görüntüleme Modal -->
     <div id="pin-display-modal" style="display: none;" class="fixed inset-0 bg-blue-600 items-center justify-center z-[110] p-4 text-white text-center">
         <div class="max-w-xs">
-            <h2 class="text-xl font-black mb-2 tracking-tight">ERİŞİM KODUNUZ</h2>
-            <p class="text-xs mb-6 opacity-80">Eklediğiniz dersleri sadece siz (veya PIN verdiğiniz biri) değiştirebilir. Bu kodu not edin!</p>
+            <h2 class="text-xl font-black mb-2 tracking-tight text-white uppercase">Erişim Kodunuz</h2>
+            <p class="text-xs mb-6 opacity-80">Eklediğiniz dersleri sadece siz değiştirebilirsiniz. Bu kodu not edin!</p>
             <div id="generated-pin-text" class="text-6xl font-black mb-8 bg-white/20 py-4 rounded-3xl tracking-widest shadow-inner">0000</div>
             <button onclick="closePinModal()" class="w-full py-4 bg-white text-blue-600 rounded-2xl font-black uppercase text-sm">Kaydettim, Başla</button>
         </div>
     </div>
 
-    <header class="bg-white border-b p-4 shadow-sm flex justify-between items-center">
+    <!-- Üst Başlık -->
+    <header class="bg-white border-b p-4 shadow-sm flex justify-between items-center sticky top-0 z-40">
         <div class="flex items-center gap-2">
             <div class="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black italic shadow-md shadow-blue-100">İS</div>
             <div class="leading-none">
                 <h1 class="text-[10px] font-black uppercase text-slate-800">İbni Sina <span class="text-blue-600">MTAL</span></h1>
-                <p class="text-[8px] font-bold text-slate-400 mt-0.5">DERS PROGRAMI SİSTEMİ</p>
+                <p class="text-[8px] font-bold text-slate-400 mt-0.5">PROGRAM SİSTEMİ</p>
             </div>
         </div>
-        <div id="display-name" class="text-[9px] font-black text-slate-500 uppercase bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200">--</div>
+        
+        <!-- Kullanıcı Bilgisi ve Çıkış Butonu -->
+        <div id="user-info-section" class="hidden flex items-center gap-4">
+            <div class="flex flex-col items-end">
+                <span id="display-name" class="text-[10px] font-black text-slate-600 uppercase tracking-tight">--</span>
+            </div>
+            <button onclick="logout()" class="text-[10px] font-black text-red-600 uppercase border border-red-200 px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-600 hover:text-white transition-all">
+                Çıkış Yap
+            </button>
+        </div>
     </header>
 
     <div id="sinif-menu-container" class="max-w-7xl mx-auto p-4 space-y-1.5"></div>
@@ -320,6 +335,7 @@
         </div>
     </main>
 
+    <!-- Kayıt Modalı -->
     <div id="modal" style="display: none;" class="fixed inset-0 bg-slate-900/70 backdrop-blur-md items-center justify-center z-50 p-4">
         <div class="bg-white w-full max-w-sm rounded-[2rem] p-7 shadow-2xl">
             <div class="flex items-center gap-2 mb-4">
