@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>İbni Sina MTAL - Yönetici Paneli</title>
+    <title>İbni Sina MTAL - Program Yönetimi</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
@@ -12,8 +12,14 @@
         import { getFirestore, doc, onSnapshot, setDoc, deleteField, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, signOut } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
 
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'ibni-sina-ders-prog'; 
+        // Global Değişkenler
+        let firebaseConfig, appId;
+        try {
+            firebaseConfig = JSON.parse(__firebase_config);
+            appId = typeof __app_id !== 'undefined' ? __app_id : 'ibni-sina-app';
+        } catch (e) {
+            console.error("Yapılandırma hatası:", e);
+        }
         
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
@@ -38,7 +44,7 @@
             { no: 9, bas: "15:20" }, { no: 10, bas: "16:10" }
         ];
 
-        let activeSinif = "9-A";
+        let activeSinif = localStorage.getItem('last_sinif') || "9-A";
         let scheduleData = {};
         let selectedCell = null;
         let user = null;
@@ -47,6 +53,7 @@
         let isAdmin = localStorage.getItem('is_admin') === "true";
 
         const startApp = async () => {
+            document.getElementById('loading-overlay').style.display = 'flex';
             try {
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
@@ -54,19 +61,12 @@
                     await signInAnonymously(auth);
                 }
             } catch (err) {
-                console.error("Firebase Hatası:", err.code);
-                let msg = "Bağlantı Hatası!";
-                if(err.code === "auth/unauthorized-domain") {
-                    msg = "Bu internet sitesi Google Console üzerinden yetkilendirilmemiş (HTTP Yönlendirme Hatası).";
-                } else if(err.code === "auth/api-key-not-valid") {
-                    msg = "API Anahtarı geçersiz veya kısıtlamalar servise izin vermiyor.";
-                }
-                
-                showCriticalError(msg);
+                showCriticalError("Bağlantı Hatası: " + err.message);
             }
 
             onAuthStateChanged(auth, (u) => {
                 user = u;
+                document.getElementById('loading-overlay').style.display = 'none';
                 if (user) {
                     if (!userName || !userPin) {
                         document.getElementById('setup-modal').style.display = 'flex';
@@ -79,10 +79,9 @@
         };
 
         function showCriticalError(text) {
-            const errorDiv = document.createElement('div');
-            errorDiv.className = "fixed inset-0 bg-red-700 text-white flex items-center justify-center p-8 text-center z-[500] font-sans";
-            errorDiv.innerHTML = `<div><i class="fa-solid fa-triangle-exclamation text-6xl mb-4"></i><h1 class="text-2xl font-bold mb-2">Erişim Engellendi</h1><p class="max-w-md mx-auto opacity-90">${text}</p><button onclick="location.reload()" class="mt-6 px-6 py-2 bg-white text-red-700 rounded-lg font-bold">Tekrar Dene</button></div>`;
-            document.body.appendChild(errorDiv);
+            const errorDiv = document.getElementById('error-display');
+            errorDiv.classList.remove('hidden');
+            errorDiv.querySelector('p').textContent = text;
         }
 
         window.completeSetup = () => {
@@ -121,11 +120,10 @@
         function updateUserDisplay() {
             const display = document.getElementById('display-name');
             display.innerHTML = isAdmin 
-                ? `<i class="fa-solid fa-crown mr-2 text-amber-500"></i>${userName}` 
+                ? `<i class="fa-solid fa-crown mr-1 text-amber-500"></i>${userName}` 
                 : `${userName} (Kod: ${userPin})`;
             
-            // Yönetici paneli butonlarını göster/gizle
-            document.getElementById('admin-actions').style.display = isAdmin ? 'flex' : 'none';
+            document.getElementById('admin-actions').classList.toggle('hidden', !isAdmin);
         }
 
         function initContent() {
@@ -138,17 +136,22 @@
             container.innerHTML = '';
             for (const [grup, subeler] of Object.entries(sinifGruplari)) {
                 const row = document.createElement('div');
-                row.className = "flex flex-col md:flex-row md:items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100";
+                row.className = "flex flex-col md:flex-row md:items-center gap-2 p-2 bg-white rounded-xl shadow-sm border border-slate-100";
                 const label = document.createElement('div');
-                label.className = "w-24 text-[10px] font-black text-slate-400 uppercase tracking-tighter shrink-0";
+                label.className = "w-24 text-[9px] font-black text-slate-400 uppercase shrink-0 px-2";
                 label.textContent = grup; 
                 const btns = document.createElement('div');
-                btns.className = "flex gap-2 flex-wrap";
+                btns.className = "flex gap-1.5 flex-wrap";
                 subeler.forEach(s => {
                     const btn = document.createElement('button');
-                    btn.className = `px-4 py-2 rounded-xl text-[11px] font-black border transition-all ${activeSinif === s ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-slate-600 border-slate-200'}`;
+                    btn.className = `px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${activeSinif === s ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-600 border-slate-200'}`;
                     btn.textContent = s;
-                    btn.onclick = () => { activeSinif = s; renderSinifMenusu(); loadSinifData(s); };
+                    btn.onclick = () => { 
+                        activeSinif = s; 
+                        localStorage.setItem('last_sinif', s);
+                        renderSinifMenusu(); 
+                        loadSinifData(s); 
+                    };
                     btns.appendChild(btn);
                 });
                 row.appendChild(label); row.appendChild(btns); container.appendChild(row);
@@ -163,7 +166,7 @@
                 scheduleData = snap.exists() ? snap.data() : {};
                 renderTable();
             }, (err) => {
-                console.error("Firestore Hatası:", err);
+                console.error("Firestore Veri Hatası:", err);
             });
         }
 
@@ -173,33 +176,33 @@
             saatler.forEach(saat => {
                 const tr = document.createElement('tr');
                 if (saat.isLunch) {
-                    tr.className = "bg-orange-50/40";
-                    tr.innerHTML = `<td class="p-3 text-center border-b border-orange-100 font-bold text-orange-600 text-[10px]">MOLA</td><td colspan="5" class="p-3 text-center border-b border-orange-100 font-black text-orange-300 uppercase text-xs">Öğle Arası (13:10 - 13:40)</td>`;
+                    tr.className = "bg-amber-50/50";
+                    tr.innerHTML = `<td class="p-2 text-center border-b font-bold text-amber-600 text-[10px]">MOLA</td><td colspan="5" class="p-2 text-center border-b font-black text-amber-300 uppercase text-[10px]">Öğle Arası (13:10 - 13:40)</td>`;
                 } else {
-                    tr.className = "border-b border-slate-100 hover:bg-slate-50/50";
+                    tr.className = "border-b border-slate-100";
                     const timeTd = document.createElement('td');
-                    timeTd.className = "p-3 font-bold text-slate-400 text-[10px] bg-slate-50/30 border-r text-center w-20";
-                    timeTd.innerHTML = `<span class="text-slate-800 font-black">${saat.no}.Ders</span><br>${saat.bas}`;
+                    timeTd.className = "p-2 font-bold text-slate-400 text-[9px] bg-slate-50/50 border-r text-center w-16";
+                    timeTd.innerHTML = `<span class="text-slate-700 font-black">${saat.no}.Ders</span><br>${saat.bas}`;
                     tr.appendChild(timeTd);
 
                     gunler.forEach(gun => {
                         const td = document.createElement('td');
                         const cellData = (scheduleData[gun] && scheduleData[gun][saat.bas]) || null;
-                        td.className = "p-2 border-r cursor-pointer min-w-[140px] h-24 relative group bg-white hover:bg-slate-50 transition-colors";
+                        td.className = "p-2 border-r cursor-pointer min-w-[120px] h-20 relative bg-white hover:bg-blue-50/30 transition-colors";
                         
                         if(cellData) {
                             const isMyOrAdmin = isAdmin || cellData.ownerPin === userPin;
                             td.innerHTML = `
                                 <div class="flex flex-col h-full justify-center">
                                     <div class="flex justify-between items-start mb-1">
-                                        <div class="text-[9px] font-black text-blue-700 uppercase truncate pr-2">${cellData.ownerName || 'Bilinmiyor'}</div>
-                                        <i class="fa-solid ${isMyOrAdmin ? 'fa-lock-open text-green-500' : 'fa-lock text-slate-300'} text-[9px]"></i>
+                                        <div class="text-[8px] font-black text-blue-600 uppercase truncate pr-1">${cellData.ownerName || 'Bilinmiyor'}</div>
+                                        <i class="fa-solid ${isMyOrAdmin ? 'fa-pen text-green-500' : 'fa-lock text-slate-300'} text-[8px]"></i>
                                     </div>
-                                    <div class="text-[11px] font-bold text-slate-800 leading-tight">${cellData.d || '-'}</div>
+                                    <div class="text-[10px] font-bold text-slate-800 leading-tight">${cellData.d || '-'}</div>
                                 </div>
                             `;
                         } else {
-                            td.innerHTML = `<div class="flex items-center justify-center h-full text-[9px] font-bold text-slate-300 opacity-0 group-hover:opacity-100">+ DERS EKLE</div>`;
+                            td.innerHTML = `<div class="flex items-center justify-center h-full text-[8px] font-bold text-slate-200">+</div>`;
                         }
                         td.onclick = () => handleCellClick(gun, saat.bas, cellData);
                         tr.appendChild(td);
@@ -222,7 +225,7 @@
             if(!d || !user) return;
             const { existingData } = selectedCell;
             if (!isAdmin && existingData && existingData.ownerPin && existingData.ownerPin !== userPin) {
-                alert("Bu ders size ait değil!");
+                alert("Bu ders size ait değil, değiştiremezsiniz.");
                 return;
             }
             const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'ders_programlari', activeSinif);
@@ -237,7 +240,7 @@
                     } 
                 }, { merge: true });
                 document.getElementById('modal').style.display = 'none';
-            } catch (err) { console.error(err); }
+            } catch (err) { alert("Kaydedilemedi: " + err.message); }
         };
 
         window.removeDers = async () => {
@@ -256,27 +259,20 @@
         // YÖNETİCİ: Tüm sınıf programını siler
         window.clearCurrentClassSchedule = async () => {
             if (!isAdmin) return;
-            if (confirm(`${activeSinif} sınıfının TÜM ders programını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`)) {
+            if (confirm(`${activeSinif} sınıfının TÜM ders programını silmek istediğinize emin misiniz?`)) {
                 const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'ders_programlari', activeSinif);
                 try {
                     await deleteDoc(docRef);
                 } catch (err) {
-                    console.error("Silme hatası:", err);
-                    alert("Veriler silinirken bir hata oluştu.");
+                    alert("Silme hatası: " + err.message);
                 }
             }
         };
 
-        window.logout = async () => {
-            if(confirm("Sistemden çıkış yapmak ve verilerinizi temizlemek istediğinize emin misiniz?")) {
-                try {
-                    await signOut(auth);
-                    localStorage.clear();
-                    window.location.reload();
-                } catch (e) {
-                    localStorage.clear();
-                    window.location.reload();
-                }
+        window.logout = () => {
+            if(confirm("Çıkış yapmak üzeresiniz. Bilgileriniz temizlenecek.")) {
+                localStorage.clear();
+                window.location.reload();
             }
         };
 
@@ -284,73 +280,87 @@
 
     </script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
-        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
 </head>
-<body class="bg-slate-50 min-h-screen">
+<body class="bg-slate-100 min-h-screen pb-10">
 
+    <!-- Yükleniyor Overlay -->
+    <div id="loading-overlay" class="fixed inset-0 bg-white z-[200] flex flex-col items-center justify-center">
+        <div class="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p class="text-sm font-bold text-slate-500">Sistem Hazırlanıyor...</p>
+    </div>
+
+    <!-- Kritik Hata Ekranı -->
+    <div id="error-display" class="hidden fixed inset-0 bg-red-600 z-[300] flex items-center justify-center p-6 text-white text-center">
+        <div>
+            <i class="fa-solid fa-triangle-exclamation text-5xl mb-4"></i>
+            <h2 class="text-xl font-bold mb-2">Bağlantı Sorunu</h2>
+            <p class="opacity-90 mb-6"></p>
+            <button onclick="location.reload()" class="bg-white text-red-600 px-8 py-3 rounded-xl font-bold">Tekrar Dene</button>
+        </div>
+    </div>
+
+    <!-- Giriş Modalı -->
     <div id="setup-modal" style="display: none;" class="fixed inset-0 bg-slate-900/90 items-center justify-center z-[100] p-4">
-        <div class="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl text-center">
-            <h2 class="text-xl font-bold mb-4">Hoş Geldiniz</h2>
-            <p class="text-sm text-slate-500 mb-6">Lütfen isminizi girerek devam edin.</p>
-            <input id="setup-name" type="text" class="w-full p-4 border rounded-xl mb-4" placeholder="Ad Soyad">
-            <button onclick="completeSetup()" class="w-full py-4 bg-blue-600 text-white rounded-xl font-bold">Giriş Yap</button>
+        <div class="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl">
+            <h2 class="text-xl font-bold mb-2">Hoş Geldiniz</h2>
+            <p class="text-xs text-slate-400 mb-6">Devam etmek için Ad Soyad giriniz.</p>
+            <input id="setup-name" type="text" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl mb-4 text-center font-bold" placeholder="Ad Soyad">
+            <button onclick="completeSetup()" class="w-full py-4 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-200">Başla</button>
         </div>
     </div>
 
+    <!-- PIN Modalı -->
     <div id="pin-display-modal" style="display: none;" class="fixed inset-0 bg-blue-600 items-center justify-center z-[110] p-4 text-white text-center">
-        <div class="max-w-md">
-            <h2 class="text-2xl font-bold mb-2">PIN Kodunuz</h2>
-            <p class="mb-6 opacity-80">Bu kod ile derslerinizi koruyoruz. Lütfen unutmayın.</p>
-            <div id="generated-pin-text" class="text-6xl font-black mb-8">0000</div>
-            <button onclick="closePinModal()" class="px-8 py-4 bg-white text-blue-600 rounded-xl font-bold uppercase">Uygulamaya Git</button>
+        <div class="max-w-xs">
+            <h2 class="text-xl font-bold mb-2">PIN KODUNUZ</h2>
+            <p class="text-sm mb-6 opacity-70">Düzenleme yapmak için bu koda ihtiyacınız olacak.</p>
+            <div id="generated-pin-text" class="text-7xl font-black mb-8 tracking-tighter">0000</div>
+            <button onclick="closePinModal()" class="w-full py-4 bg-white text-blue-600 rounded-2xl font-black uppercase shadow-xl">Anladım</button>
         </div>
     </div>
 
-    <header class="bg-white border-b sticky top-0 z-40 p-4 shadow-sm flex justify-between items-center">
-        <div class="flex items-center gap-3">
-            <div class="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white"><i class="fa-solid fa-school"></i></div>
-            <div>
-                <h1 class="text-sm font-black uppercase tracking-tight text-slate-800">İbni Sina MTAL</h1>
-                <span class="text-[10px] text-slate-400 font-bold uppercase">Yönetim Paneli</span>
-            </div>
+    <header class="bg-white border-b sticky top-0 z-40 p-3 shadow-sm flex justify-between items-center">
+        <div class="flex items-center gap-2">
+            <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white text-sm"><i class="fa-solid fa-clipboard-list"></i></div>
+            <h1 class="text-xs font-black uppercase tracking-tighter text-slate-800 leading-none">İbni Sina<br><span class="text-blue-600">MTAL</span></h1>
         </div>
         
         <div class="flex items-center gap-2">
-            <!-- Yönetici butonları buraya geliyor -->
-            <div id="admin-actions" style="display: none;" class="flex items-center gap-2">
-                <button onclick="clearCurrentClassSchedule()" class="bg-red-50 hover:bg-red-100 text-red-600 px-4 py-2 rounded-xl text-[11px] font-black transition-all border border-red-200">
-                    <i class="fa-solid fa-trash-can mr-2"></i>TÜMÜNÜ SİL
-                </button>
-                <div class="w-[1px] h-6 bg-slate-200 mx-1"></div>
-            </div>
-
-            <div class="flex items-center gap-4">
-                <span id="display-name" class="text-xs font-bold text-slate-600"></span>
-                <button onclick="logout()" style="font-size: 11pt;" class="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2 rounded-xl font-bold transition-all active:scale-95">
-                    Çıkış Yap
+            <div id="admin-actions" class="hidden flex items-center gap-2">
+                <button onclick="clearCurrentClassSchedule()" class="bg-red-500 text-white px-3 py-1.5 rounded-lg text-[10px] font-black border border-red-600 active:scale-95">
+                    TÜMÜNÜ SİL
                 </button>
             </div>
+            <span id="display-name" class="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-1.5 rounded-lg hidden sm:block"></span>
+            <button onclick="logout()" class="w-8 h-8 flex items-center justify-center bg-slate-800 text-white rounded-lg active:scale-90">
+                <i class="fa-solid fa-power-off text-xs"></i>
+            </button>
         </div>
     </header>
 
-    <div id="sinif-menu-container" class="max-w-7xl mx-auto p-4 space-y-2"></div>
+    <div id="sinif-menu-container" class="max-w-7xl mx-auto p-3 space-y-2"></div>
 
-    <main class="max-w-7xl mx-auto p-4">
-        <h2 id="current-sinif-title" class="text-3xl font-black text-slate-900 mb-6 tracking-tighter">--</h2>
+    <main class="max-w-7xl mx-auto px-3">
+        <div class="flex justify-between items-end mb-4 px-1">
+            <h2 id="current-sinif-title" class="text-2xl font-black text-slate-900 tracking-tighter">--</h2>
+            <span class="text-[9px] font-bold text-slate-400 uppercase">Haftalık Ders Programı</span>
+        </div>
         
         <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-            <div class="overflow-x-auto">
+            <div class="overflow-x-auto no-scrollbar">
                 <table class="w-full border-collapse">
                     <thead class="bg-slate-50 border-b border-slate-200">
                         <tr>
-                            <th class="p-4 text-xs font-black text-slate-400 uppercase w-20">Saat</th>
-                            <th class="p-4 text-xs font-black text-slate-400 uppercase">Pazartesi</th>
-                            <th class="p-4 text-xs font-black text-slate-400 uppercase">Salı</th>
-                            <th class="p-4 text-xs font-black text-slate-400 uppercase">Çarşamba</th>
-                            <th class="p-4 text-xs font-black text-slate-400 uppercase">Perşembe</th>
-                            <th class="p-4 text-xs font-black text-slate-400 uppercase text-center">Cuma</th>
+                            <th class="p-3 text-[9px] font-black text-slate-400 uppercase w-16">Saat</th>
+                            <th class="p-3 text-[9px] font-black text-slate-400 uppercase">Pzt</th>
+                            <th class="p-3 text-[9px] font-black text-slate-400 uppercase">Sal</th>
+                            <th class="p-3 text-[9px] font-black text-slate-400 uppercase">Çar</th>
+                            <th class="p-3 text-[9px] font-black text-slate-400 uppercase">Per</th>
+                            <th class="p-3 text-[9px] font-black text-slate-400 uppercase text-center">Cum</th>
                         </tr>
                     </thead>
                     <tbody id="schedule-body"></tbody>
@@ -359,16 +369,17 @@
         </div>
     </main>
 
-    <div id="modal" style="display: none;" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm items-center justify-center z-50 p-4">
-        <div class="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl">
-            <h3 class="text-xl font-bold mb-1">Ders Kaydı</h3>
-            <p id="m-info" class="text-[10px] text-blue-600 font-bold mb-4 uppercase"></p>
-            <input id="inp-d" class="w-full p-4 border rounded-xl mb-6 font-bold" placeholder="Ders - Öğretmen">
-            <div class="flex flex-col gap-2">
-                <button onclick="save()" class="w-full py-4 bg-blue-600 text-white rounded-xl font-bold uppercase">Kaydet</button>
+    <!-- Kayıt Modalı -->
+    <div id="modal" style="display: none;" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm items-center justify-center z-50 p-4">
+        <div class="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl">
+            <h3 class="text-lg font-bold mb-1">Ders Bilgisi</h3>
+            <p id="m-info" class="text-[9px] text-blue-600 font-bold mb-4 uppercase tracking-widest"></p>
+            <input id="inp-d" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl mb-6 font-bold text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Ders Adı - Öğretmen">
+            <div class="space-y-2">
+                <button onclick="save()" class="w-full py-4 bg-blue-600 text-white rounded-xl font-bold uppercase text-sm shadow-lg shadow-blue-100 active:scale-95 transition-transform">Değişiklikleri Kaydet</button>
                 <div class="flex gap-2">
-                    <button id="btn-delete" onclick="removeDers()" class="flex-1 py-3 bg-red-50 text-red-600 rounded-xl font-bold text-xs">SİL</button>
-                    <button onclick="document.getElementById('modal').style.display='none'" class="flex-1 py-3 text-slate-400 font-bold text-xs">KAPAT</button>
+                    <button id="btn-delete" onclick="removeDers()" class="flex-1 py-3 bg-red-50 text-red-600 rounded-xl font-bold text-[10px] uppercase">Dersi Sil</button>
+                    <button onclick="document.getElementById('modal').style.display='none'" class="flex-1 py-3 text-slate-400 font-bold text-[10px] uppercase">Vazgeç</button>
                 </div>
             </div>
         </div>
